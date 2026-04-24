@@ -54,7 +54,7 @@
     <div class="flex items-center gap-2 flex-wrap justify-center">
       {#if githubStats}
         <span class="text-text/90 font-medium pointer-events-none">
-          {githubStats.totalContributions} contributions since
+          {githubStats.totalContributions} contributions in
         </span>
       {/if}
       <select 
@@ -63,7 +63,7 @@
         onchange={(e) => onYearChange(e.currentTarget.value)}
         disabled={loadingGithub}
       >
-        <option value="last">Last Year</option>
+        <option value="last">the last year</option>
         {#each contributionYears as year}
           <option value={year.toString()}>{year}</option>
         {/each}
