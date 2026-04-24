@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# SvelteKit build and generated files
+.svelte-kit/
+build/
+dist/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# IDE-specific files (JetBrains and VS Code)
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Vite
+*.local
