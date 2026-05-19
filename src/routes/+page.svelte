@@ -90,7 +90,7 @@
 </script>
 
 <svelte:head>
-  <title>Home | Portfolio</title>
+  <title>Murat Bayraktar — Portfolio</title>
 </svelte:head>
 
 <Main />
@@ -113,10 +113,3 @@
     />
   </div>
 </section>
-
-<style>
-  @keyframes fade-in {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-</style>

@@ -57,8 +57,9 @@
           {githubStats.totalContributions} contributions in
         </span>
       {/if}
-      <select 
+      <select
         class="bg-surface/50 border border-white/10 text-sm rounded-md px-2 py-1 outline-none focus:border-primary transition-colors cursor-pointer text-text/90"
+        aria-label="Select contribution year"
         bind:value={selectedYear}
         onchange={(e) => onYearChange(e.currentTarget.value)}
         disabled={loadingGithub}
@@ -71,10 +72,12 @@
     </div>
     
     {#if githubStats}
-      <div class="flex bg-surface/50 rounded-lg p-1 border border-white/5 pointer-events-auto">
+      <div class="flex bg-surface/50 rounded-lg p-1 border border-white/5 pointer-events-auto" role="tablist" aria-label="GitHub activity view">
         {#each ['contributions', 'hours', 'blended'] as tab}
-          <button 
+          <button
             class="px-2 py-0.5 text-[10px] font-medium rounded-md transition-colors {githubTab === tab ? 'bg-white/10 text-text' : 'text-muted hover:text-text/80'}"
+            role="tab"
+            aria-selected={githubTab === tab}
             onclick={() => setTab(tab)}
           >
             {tab.charAt(0).toUpperCase() + tab.slice(1)}

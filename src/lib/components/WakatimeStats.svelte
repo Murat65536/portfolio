@@ -6,14 +6,20 @@
   let wakaTab = $state<'languages' | 'editors' | 'os'>('languages');
 
   let currentList = $derived(wakaTab === 'languages' ? stats.languages : wakaTab === 'editors' ? stats.editors : stats.os);
+  let hasData = $derived(stats.languages.length > 0 || stats.editors.length > 0 || stats.os.length > 0);
 </script>
 
 <div class="p-8 rounded-xl border border-white/5 bg-surface/50 hover:border-white/10 transition-all flex flex-col h-full">
   <h3 class="text-lg font-semibold mb-6 flex items-center justify-center text-text/90">
     All-Time Coding Stats
   </h3>
-  
+
   <div class="grow flex flex-col justify-center">
+    {#if !hasData}
+      <div class="text-center text-muted text-sm py-8">
+        Coding stats unavailable right now.
+      </div>
+    {:else}
     <div class="mb-6 pb-6 border-b border-white/5 flex flex-col items-center justify-center gap-4 text-center">
       <div>
         <div class="text-3xl font-bold text-text mb-1">
@@ -25,17 +31,23 @@
         </div>
       </div>
       
-      <div class="flex bg-surface/50 rounded-lg p-1 border border-white/5">
-          <button 
+      <div class="flex bg-surface/50 rounded-lg p-1 border border-white/5" role="tablist" aria-label="Coding stats category">
+          <button
             class="px-3 py-1 text-sm font-medium rounded-md transition-colors {wakaTab === 'languages' ? 'bg-white/10 text-text' : 'text-muted hover:text-text/80'}"
+            role="tab"
+            aria-selected={wakaTab === 'languages'}
             onclick={() => wakaTab = 'languages'}
           >Languages</button>
-          <button 
+          <button
             class="px-3 py-1 text-sm font-medium rounded-md transition-colors {wakaTab === 'editors' ? 'bg-white/10 text-text' : 'text-muted hover:text-text/80'}"
+            role="tab"
+            aria-selected={wakaTab === 'editors'}
             onclick={() => wakaTab = 'editors'}
           >IDEs</button>
-          <button 
+          <button
             class="px-3 py-1 text-sm font-medium rounded-md transition-colors {wakaTab === 'os' ? 'bg-white/10 text-text' : 'text-muted hover:text-text/80'}"
+            role="tab"
+            aria-selected={wakaTab === 'os'}
             onclick={() => wakaTab = 'os'}
           >OS</button>
         </div>
@@ -61,5 +73,6 @@
         </div>
       {/each}
     </div>
+    {/if}
   </div>
 </div>
