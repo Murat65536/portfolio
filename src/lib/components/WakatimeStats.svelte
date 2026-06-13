@@ -54,7 +54,7 @@
       </div>
 
     <div class="space-y-6">
-      {#each Array(5) as _, i}
+      {#each Array(3) as _, i}
         {@const item = currentList[i]}
         <div class={item ? "" : "invisible"} aria-hidden={!item}>
           <div class="flex justify-between text-sm mb-2">
