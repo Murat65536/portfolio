@@ -5,6 +5,40 @@
   import { page } from '$app/state';
 
   let { children } = $props();
+
+  let scrollProgress = $state(0);
+  let isScrolling = $state(false);
+  let isScrolled = $state(false);
+  let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  $effect(() => {
+    const handleScroll = () => {
+      const scrollTop = window.scrollY || document.documentElement.scrollTop;
+      const scrollHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+      
+      if (scrollHeight > 0) {
+        scrollProgress = Math.min(100, Math.max(0, (scrollTop / scrollHeight) * 100));
+      } else {
+        scrollProgress = 0;
+      }
+
+      isScrolled = scrollTop > 10;
+      isScrolling = true;
+
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(() => {
+        isScrolling = false;
+      }, 200);
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    handleScroll();
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+    };
+  });
 </script>
 
 <div class="min-h-screen flex flex-col bg-background selection:bg-primary/30">
@@ -20,6 +54,15 @@
         <a href="/" class="hover:text-text transition-colors">Home</a>
         <a href="/blog" class="hover:text-text transition-colors">Blog</a>
       </nav>
+    </div>
+
+    <div 
+      class="absolute bottom-0 left-0 right-0 h-1 bg-white/10 pointer-events-none transition-opacity duration-300 {isScrolled && isScrolling ? 'opacity-50' : 'opacity-0'}"
+    >
+      <div 
+        class="h-full bg-primary shadow-[0_0_10px_rgba(59,130,246,0.8)] transition-all duration-75 ease-out"
+        style="width: {scrollProgress}%"
+      ></div>
     </div>
   </header>
 
