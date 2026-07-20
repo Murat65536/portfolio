@@ -12,7 +12,8 @@ export const load: PageServerLoad = async () => {
       slug,
       title: metadata?.title || 'Untitled',
       description: metadata?.description || 'No description provided.',
-      date: metadata?.date || 'Unknown date'
+      date: metadata?.date || 'Unknown date',
+      image: metadata?.image
     };
   }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 

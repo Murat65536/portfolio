@@ -2,6 +2,7 @@
 title: "Terminal displays"
 description: "An explanation of the convoluted mess that is terminal rendering"
 date: "7-20-2026"
+image: "/blog/terminal-displays.png"
 ---
 
 Terminal rendering is a classic problem you might come across if you've ever tried to make a drawing in the terminal. The terminal is great at rendering text. For that, all that's needed is a print statement, but what about a picture? That's a little more complicated.
