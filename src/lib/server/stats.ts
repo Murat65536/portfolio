@@ -28,8 +28,10 @@ const GITHUB_QUERY = `
   }
 `;
 
-// Simple in-memory cache for WakaTime activity data
+// Simple in-memory cache for stats data
 let wakaActivityCache: { data: WakaTimeActivityResponse, timestamp: number } | null = null;
+let githubStatsCache: Record<string, { data: { calendar: any, years: number[], wakaActivity: any }, timestamp: number }> = {};
+let wakaShareCache: { data: { languages: WakaTimeItem[], editors: WakaTimeItem[], os: WakaTimeItem[], totalHours: number, timeRange: string } | null, timestamp: number } | null = null;
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 
 async function fetchWakaTimeActivity(fetchFn: typeof fetch): Promise<WakaTimeActivityResponse | null> {
@@ -52,6 +54,12 @@ async function fetchWakaTimeActivity(fetchFn: typeof fetch): Promise<WakaTimeAct
 }
 
 export async function getGitHubStats(fetchFn: typeof fetch, year?: string) {
+  const cacheKey = year || 'last';
+  const now = Date.now();
+  if (githubStatsCache[cacheKey] && (now - githubStatsCache[cacheKey].timestamp < CACHE_TTL)) {
+    return githubStatsCache[cacheKey].data;
+  }
+
   const token = env.GITHUB_TOKEN;
   if (!token) throw new Error('GITHUB_TOKEN not configured');
 
@@ -87,14 +95,22 @@ export async function getGitHubStats(fetchFn: typeof fetch, year?: string) {
     calendar = enrichWithWakatimeShare(calendar, wakaActivity);
   }
 
-  return {
+  const result = {
     calendar,
     years: collection?.contributionYears || [],
     wakaActivity
   };
+
+  githubStatsCache[cacheKey] = { data: result, timestamp: now };
+  return result;
 }
 
 export async function getWakaTimeShareData(fetchFn: typeof fetch) {
+  const now = Date.now();
+  if (wakaShareCache && (now - wakaShareCache.timestamp < CACHE_TTL)) {
+    return wakaShareCache.data;
+  }
+
   try {
     const activityData = await fetchWakaTimeActivity(fetchFn);
     
@@ -117,13 +133,16 @@ export async function getWakaTimeShareData(fetchFn: typeof fetch) {
       }));
     };
 
-    return {
+    const result = {
       languages: await processItems(langRes),
       editors: await processItems(editRes),
       os: await processItems(osRes),
       totalHours,
       timeRange
     };
+
+    wakaShareCache = { data: result, timestamp: now };
+    return result;
   } catch (e) {
     console.error('Failed to fetch WakaTime share data', e);
     return null;

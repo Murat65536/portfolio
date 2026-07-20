@@ -27,9 +27,14 @@
 .prose h2 { @apply text-2xl mb-4 mt-8; }
 .prose p { @apply mb-4 leading-relaxed; }
 .prose a { @apply text-primary hover:underline transition-colors; }
-.prose code { @apply bg-surface px-1.5 py-0.5 rounded text-sm text-primary; }
+.prose code { @apply bg-surface px-1.5 py-0.5 rounded text-sm text-emerald-400; }
 .prose pre { @apply bg-surface p-4 rounded-lg overflow-x-auto mb-6 border border-white/10; }
-.prose pre code { @apply bg-transparent p-0 text-text/90; }
+.prose pre code {
+  @apply bg-transparent p-0 text-text/90 block;
+  font-family: ui-monospace, "Cascadia Code", "DejaVu Sans Mono", "Consolas", "Segoe UI Symbol", monospace;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
 .prose ul { @apply list-disc list-inside mb-4; }
 .prose li { @apply mb-2; }
 

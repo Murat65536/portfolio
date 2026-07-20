@@ -19,8 +19,7 @@ export function enrichWithWakatimeShare(
     if (day.date) {
       const totalSeconds = day.total || 0;
       dailySecondsMap[day.date] = totalSeconds;
-      
-      // Create a human-readable duration string (e.g., "2 hrs 15 mins")
+
       const hours = Math.floor(totalSeconds / 3600);
       const minutes = Math.floor((totalSeconds % 3600) / 60);
       

@@ -1,13 +1,13 @@
 import { error } from '@sveltejs/kit';
 import type { PageLoad } from './$types';
-import type { Project } from '$lib/types';
+import type { BlogPost } from '$lib/types';
 import type { Component } from 'svelte';
 
 export const load: PageLoad = async ({ params }) => {
   try {
-    const post = await import(`../../../lib/projects/${params.slug}.md`) as {
+    const post = await import(`../../../lib/posts/${params.slug}.md`) as {
       default: Component;
-      metadata: Omit<Project, 'slug'>;
+      metadata: Omit<BlogPost, 'slug'>;
     };
     
     return {
@@ -15,6 +15,6 @@ export const load: PageLoad = async ({ params }) => {
       meta: post.metadata
     };
   } catch (e) {
-    throw error(404, `Could not find project ${params.slug}`);
+    throw error(404, `Could not find blog post ${params.slug}`);
   }
 };

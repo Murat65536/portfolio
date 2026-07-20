@@ -1,12 +1,12 @@
 import type { PageServerLoad } from './$types';
-import type { Project } from '$lib/types';
+import type { BlogPost } from '$lib/types';
 
 export const load: PageServerLoad = async () => {
-  const paths = import.meta.glob('/src/lib/projects/*.md', { eager: true });
+  const paths = import.meta.glob('/src/lib/posts/*.md', { eager: true });
   
-  const projects: Project[] = Object.entries(paths).map(([path, file]) => {
+  const posts: BlogPost[] = Object.entries(paths).map(([path, file]) => {
     const slug = path.split('/').pop()?.split('.md')[0] || '';
-    const metadata = (file as { metadata: Omit<Project, 'slug'> }).metadata;
+    const metadata = (file as { metadata: Omit<BlogPost, 'slug'> }).metadata;
     
     return {
       slug,
@@ -16,5 +16,5 @@ export const load: PageServerLoad = async () => {
     };
   }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-  return { projects };
+  return { posts };
 };

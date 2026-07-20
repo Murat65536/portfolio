@@ -10,8 +10,8 @@
 </svelte:head>
 
 <article class="animate-fade-in max-w-3xl mx-auto">
-  <a href="/projects" class="text-muted hover:text-text text-sm mb-8 inline-flex items-center transition-colors">
-    Back to projects
+  <a href="/blog" class="text-muted hover:text-text text-sm mb-8 inline-flex items-center transition-colors">
+    ← Back to blog
   </a>
 
   <header class="mb-10">

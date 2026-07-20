@@ -12,13 +12,13 @@
     <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
       <a href="/" class="text-xl font-bold tracking-tight hover:text-primary transition-colors flex items-center gap-1">
         <span class="text-primary">~</span>/
-        {#if page.url.pathname.startsWith('/projects')}
-          Projects
+        {#if page.url.pathname.startsWith('/blog')}
+          Blog
         {/if}
       </a>
       <nav class="flex gap-6 text-sm font-medium text-muted items-center">
         <a href="/" class="hover:text-text transition-colors">Home</a>
-        <a href="/projects" class="hover:text-text transition-colors">Projects</a>
+        <a href="/blog" class="hover:text-text transition-colors">Blog</a>
       </nav>
     </div>
   </header>

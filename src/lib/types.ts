@@ -53,7 +53,7 @@ export interface GitHubGraphQLResponse {
   };
 }
 
-export interface Project {
+export interface BlogPost {
   slug: string;
   title: string;
   description: string;
