@@ -8,7 +8,19 @@ const config = {
   preprocess: [
     vitePreprocess(),
     mdsvex({
-      extensions: ['.md']
+      extensions: ['.md'],
+      rehypePlugins: [
+        () => (tree) => {
+          const visit = (node) => {
+            if (node.tagName === 'a') {
+              node.properties.target = '_blank';
+              node.properties.rel = 'noopener noreferrer';
+            }
+            node.children?.forEach(visit);
+          };
+          visit(tree);
+        }
+      ]
     })
   ],
   kit: {
