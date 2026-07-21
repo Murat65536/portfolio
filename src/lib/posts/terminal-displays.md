@@ -126,7 +126,7 @@ Truecolor:
 Sixel:
 - Send the DA1 (primary device attributes) escape code `\x1b[c`. The terminal will send back a list of supported feature codes: `\x1b[?62;1;2;4;15;22c`. If the response includes `4`, the terminal supports Sixel.
 - Send the XTSMGRAPHICS query `\x1b[?1;1;0S`, which queries width and height. The response format looks like `\x1b[?1;0;0;{width};{height}S`
-- Send the XTSMGRAPHICS query `\x1b[?1;3;0S`, which queries available Sixel color registers. THe response for this looks like `\x1b[?1;0;3;{num_colors}S`
+- Send the XTSMGRAPHICS query `\x1b[?1;3;0S`, which queries available Sixel color registers. The response for this looks like `\x1b[?1;0;3;{num_colors}S`
 
 Kitty Graphics Protocol:
 - Send the XTGETTCAP query `\033P+q6b697474792d71756572792d76657273696f6e\033\` (the hex string decodes to `kitty-query-version`). The terminal will respond with something along the lines of `\033P1+r6b697474792d71756572792d76657273696f6e=302e33352e32\033\` (decodes to `kitty-query-version=0.35.2`).
