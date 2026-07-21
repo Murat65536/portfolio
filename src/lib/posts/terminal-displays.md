@@ -134,6 +134,6 @@ Kitty Graphics Protocol:
 - Check if the `TERM` environment variable is set to `xterm-kitty`
 
 Edge cases:
-Sometimes on Windows, a terminal will tell you that it supports a format and then proceed to not work. This is because older versions of ConPTY are lame and stupid. They don't recognize know to handle those escape sequences. You can't really do too much about this.
+Sometimes on Windows, a terminal will tell you that it supports a format and then proceed to not work. This is because older versions of ConPTY are lame and stupid. They don't recognize how to handle those escape sequences. You can't really do too much about this.
 
 Until recently, my own project [dcat](https://github.com/Murat65536/dcat) was manually doing all the escape sequence work, but I have now switched to [Chafa](https://github.com/hpjansson/chafa) and have escaped from whatever torture this is.
