@@ -2,15 +2,17 @@ export interface WakaTimeItem {
   name: string;
   percent: number;
   color: string;
-  text: string;
 }
 
 export interface WakaTimeData {
-  languages: WakaTimeItem[];
-  editors: WakaTimeItem[];
-  os: WakaTimeItem[];
-  totalHours: number;
-  timeRange: string;
+  breakdowns: Record<WakaTimeCategory, WakaTimeBreakdown> | null;
+}
+
+export type WakaTimeCategory = 'languages' | 'editors' | 'os';
+
+export interface WakaTimeBreakdown {
+  series: Pick<WakaTimeItem, 'name' | 'color'>[];
+  days: { date: string; seconds: number[] }[];
 }
 
 export interface WakaTimeDay {
@@ -19,7 +21,7 @@ export interface WakaTimeDay {
 }
 
 export interface WakaTimeShareResponse {
-  data: (Omit<WakaTimeItem, 'text'>)[];
+  data: WakaTimeItem[];
 }
 
 export interface WakaTimeActivityResponse {
@@ -27,11 +29,20 @@ export interface WakaTimeActivityResponse {
   days: WakaTimeDay[];
 }
 
+export interface WakaTimeSummariesResponse {
+  data: {
+    grand_total: { total_seconds: number };
+    languages: { name: string; total_seconds: number }[];
+    editors: { name: string; total_seconds: number }[];
+    operating_systems: { name: string; total_seconds: number }[];
+    range: { date: string };
+  }[];
+}
+
 export interface ContributionDay {
   contributionCount: number;
   date: string;
   color: string;
-  codingText?: string;
   codingSeconds?: number;
 }
 

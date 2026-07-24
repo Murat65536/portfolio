@@ -1,150 +1,153 @@
 import { env } from '$env/dynamic/private';
+import { mergeGitHubStats } from '$lib/activity';
 import { CONFIG } from '$lib/config';
 import type {
-  GitHubGraphQLResponse,
-  WakaTimeActivityResponse,
-  WakaTimeShareResponse,
-  WakaTimeItem
+  GitHubGraphQLResponse, GitHubStats, WakaTimeActivityResponse, WakaTimeCategory, WakaTimeData,
+  WakaTimeDay, WakaTimeItem, WakaTimeShareResponse, WakaTimeSummariesResponse
 } from '$lib/types';
-import { enrichWithWakatimeShare } from '$lib/wakatime';
 
 const GITHUB_QUERY = `
-  query($userName:String!, $from: DateTime, $to: DateTime) {
-    user(login: $userName){
+  query($userName: String!, $from: DateTime, $to: DateTime) {
+    user(login: $userName) {
       contributionsCollection(from: $from, to: $to) {
         contributionYears
         contributionCalendar {
           totalContributions
-          weeks {
-            contributionDays {
-              contributionCount
-              date
-              color
-            }
-          }
+          weeks { contributionDays { contributionCount date color } }
         }
       }
     }
   }
 `;
+const TTL = 15 * 60 * 1000;
+const cache = new Map<string, { data: unknown; expires: number }>();
+const emptyWakaTime: WakaTimeData = { breakdowns: null };
 
-// Simple in-memory cache for stats data
-let wakaActivityCache: { data: WakaTimeActivityResponse, timestamp: number } | null = null;
-let githubStatsCache: Record<string, { data: { calendar: any, years: number[], wakaActivity: any }, timestamp: number }> = {};
-let wakaShareCache: { data: { languages: WakaTimeItem[], editors: WakaTimeItem[], os: WakaTimeItem[], totalHours: number, timeRange: string } | null, timestamp: number } | null = null;
-const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+async function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
+  const hit = cache.get(key);
+  if (hit && hit.expires > Date.now()) return hit.data as T;
+  const data = await load();
+  cache.set(key, { data, expires: Date.now() + TTL });
+  return data;
+}
 
-async function fetchWakaTimeActivity(fetchFn: typeof fetch): Promise<WakaTimeActivityResponse | null> {
-  const now = Date.now();
-  if (wakaActivityCache && (now - wakaActivityCache.timestamp < CACHE_TTL)) {
-    return wakaActivityCache.data;
-  }
-
-  try {
-    const res = await fetchFn(`https://wakatime.com/share/@${CONFIG.GITHUB_USERNAME}/${CONFIG.WAKATIME_SHARE_IDS.activity}.json`);
-    if (res.ok) {
-      const data = await res.json() as WakaTimeActivityResponse;
-      wakaActivityCache = { data, timestamp: now };
-      return data;
+async function getWakaTimeActivity(fetchFn: typeof fetch) {
+  return cached<WakaTimeActivityResponse | null>('waka:activity', async () => {
+    try {
+      const response = await fetchFn(`https://wakatime.com/share/@${CONFIG.GITHUB_USERNAME}/${CONFIG.WAKATIME_SHARE_IDS.activity}.json`);
+      return response.ok ? response.json() as Promise<WakaTimeActivityResponse> : null;
+    } catch {
+      return null;
     }
-  } catch (e) {
-    console.error('Failed to fetch WakaTime activity', e);
-  }
-  return null;
+  });
 }
 
-export async function getGitHubStats(fetchFn: typeof fetch, year?: string) {
-  const cacheKey = year || 'last';
-  const now = Date.now();
-  if (githubStatsCache[cacheKey] && (now - githubStatsCache[cacheKey].timestamp < CACHE_TTL)) {
-    return githubStatsCache[cacheKey].data;
-  }
+async function getWakaTimeBreakdowns(fetchFn: typeof fetch, days: WakaTimeDay[], lists: WakaTimeItem[][]) {
+  if (!env.WAKATIME_API_KEY || !days.length) return null;
 
-  const token = env.GITHUB_TOKEN;
-  if (!token) throw new Error('GITHUB_TOKEN not configured');
+  return cached('waka:breakdowns', async () => {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const years = [...new Set(days.map(({ date }) => date.slice(0, 4)))];
+      const responses = await Promise.all(years.map((year) => fetchFn(
+        `https://wakatime.com/api/v1/users/current/summaries?start=${year}-01-01&end=${year === today.slice(0, 4) ? today : `${year}-12-31`}`,
+        { headers: { Authorization: `Basic ${btoa(env.WAKATIME_API_KEY)}` } }
+      )));
+      if (responses.some(({ ok }) => !ok)) return null;
 
-  let from = undefined;
-  let to = undefined;
-  if (year && year !== 'last') {
-    from = `${year}-01-01T00:00:00Z`;
-    to = `${year}-12-31T23:59:59Z`;
-  }
+      const summaries = (await Promise.all(responses.map((response) =>
+        response.json() as Promise<WakaTimeSummariesResponse>
+      ))).flatMap(({ data }) => data);
+      const fields = { languages: 'languages', editors: 'editors', os: 'operating_systems' } as const;
 
-  const [githubRes, wakaActivity] = await Promise.all([
-    fetchFn('https://api.github.com/graphql', {
-      method: 'POST',
-      headers: {
-        'Authorization': `bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        query: GITHUB_QUERY,
-        variables: { userName: CONFIG.GITHUB_USERNAME, from, to },
+      return Object.fromEntries((Object.keys(fields) as WakaTimeCategory[]).map((category, listIndex) => {
+        const top = lists[listIndex].filter(({ name }) => name !== 'Other').slice(0, 3);
+        const categoryDays = summaries.map((day) => {
+          const seconds = top.map(({ name }) =>
+            day[fields[category]].find((item) => item.name === name)?.total_seconds ?? 0
+          );
+          return {
+            date: day.range.date,
+            seconds: [...seconds, Math.max(0, day.grand_total.total_seconds - seconds.reduce((a, b) => a + b, 0))]
+          };
+        });
+        const hasOther = categoryDays.some(({ seconds }) => seconds.at(-1));
+
+        return [category, {
+          series: [...top.map(({ name, color }) => ({ name, color })), ...(hasOther ? [{ name: 'Other', color: '#6b7280' }] : [])],
+          days: hasOther ? categoryDays : categoryDays.map(({ date, seconds }) => ({ date, seconds: seconds.slice(0, -1) }))
+        }];
+      })) as WakaTimeData['breakdowns'];
+    } catch {
+      return null;
+    }
+  });
+}
+
+export async function getGitHubStats(fetchFn: typeof fetch, range = 'last'): Promise<{
+  calendar: GitHubStats | null;
+  years: number[];
+}> {
+  const safeRange = range === 'total' || /^\d{4}$/.test(range) ? range : 'last';
+
+  return cached(`github:${safeRange}`, async () => {
+    if (safeRange === 'total') {
+      const { years } = await getGitHubStats(fetchFn);
+      const calendars = await Promise.all(years.map(async (year) =>
+        (await getGitHubStats(fetchFn, String(year))).calendar
+      ));
+      return { calendar: mergeGitHubStats(calendars.filter((item): item is GitHubStats => item !== null)), years };
+    }
+
+    if (!env.GITHUB_TOKEN) throw new Error('GITHUB_TOKEN not configured');
+    const year = safeRange === 'last' ? undefined : safeRange;
+    const [response, wakaTime] = await Promise.all([
+      fetchFn('https://api.github.com/graphql', {
+        method: 'POST',
+        headers: { Authorization: `bearer ${env.GITHUB_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: GITHUB_QUERY,
+          variables: {
+            userName: CONFIG.GITHUB_USERNAME,
+            from: year ? `${year}-01-01T00:00:00Z` : undefined,
+            to: year ? `${year}-12-31T23:59:59Z` : undefined
+          }
+        })
       }),
-    }),
-    fetchWakaTimeActivity(fetchFn)
-  ]);
+      getWakaTimeActivity(fetchFn)
+    ]);
+    if (!response.ok) throw new Error('GitHub API request failed');
 
-  if (!githubRes.ok) throw new Error('GitHub API responded with error');
+    const collection = ((await response.json()) as GitHubGraphQLResponse).data?.user?.contributionsCollection;
+    const calendar = collection?.contributionCalendar ?? null;
+    const codingByDate = new Map(wakaTime?.days.map((day) => [day.date, day.total]) ?? []);
 
-  const json = await githubRes.json() as GitHubGraphQLResponse;
-  const collection = json.data?.user?.contributionsCollection;
-  let calendar = collection?.contributionCalendar || null;
+    for (const week of calendar?.weeks ?? []) {
+      for (const day of week.contributionDays) day.codingSeconds = codingByDate.get(day.date) ?? 0;
+    }
 
-  if (calendar && wakaActivity) {
-    calendar = enrichWithWakatimeShare(calendar, wakaActivity);
-  }
-
-  const result = {
-    calendar,
-    years: collection?.contributionYears || [],
-    wakaActivity
-  };
-
-  githubStatsCache[cacheKey] = { data: result, timestamp: now };
-  return result;
+    return { calendar, years: collection?.contributionYears ?? [] };
+  });
 }
 
-export async function getWakaTimeShareData(fetchFn: typeof fetch) {
-  const now = Date.now();
-  if (wakaShareCache && (now - wakaShareCache.timestamp < CACHE_TTL)) {
-    return wakaShareCache.data;
-  }
-
-  try {
-    const activityData = await fetchWakaTimeActivity(fetchFn);
-    
-    const [langRes, editRes, osRes] = await Promise.all([
-      fetchFn(`https://wakatime.com/share/@${CONFIG.GITHUB_USERNAME}/${CONFIG.WAKATIME_SHARE_IDS.languages}.json`),
-      fetchFn(`https://wakatime.com/share/@${CONFIG.GITHUB_USERNAME}/${CONFIG.WAKATIME_SHARE_IDS.editors}.json`),
-      fetchFn(`https://wakatime.com/share/@${CONFIG.GITHUB_USERNAME}/${CONFIG.WAKATIME_SHARE_IDS.os}.json`)
-    ]);
-
-    const totalSeconds = (activityData?.days || []).reduce((acc, day) => acc + (day.total || 0), 0);
-    const totalHours = Math.floor(totalSeconds / 3600);
-    const timeRange = activityData?.human_readable_range || 'all-time';
-
-    const processItems = async (res: Response): Promise<WakaTimeItem[]> => {
-      if (!res.ok) return [];
-      const json = await res.json() as WakaTimeShareResponse;
-      return json.data.slice(0, 5).map(item => ({
-        ...item,
-        text: `${Math.floor(totalHours * (item.percent / 100))} hrs`
+export async function getWakaTimeData(fetchFn: typeof fetch): Promise<WakaTimeData> {
+  return cached('waka:shares', async () => {
+    try {
+      const activity = await getWakaTimeActivity(fetchFn);
+      const categories = ['languages', 'editors', 'os'] as const;
+      const responses = await Promise.all(categories.map((category) =>
+        fetchFn(`https://wakatime.com/share/@${CONFIG.GITHUB_USERNAME}/${CONFIG.WAKATIME_SHARE_IDS[category]}.json`)
+      ));
+      const lists = await Promise.all(responses.map(async (response) => {
+        if (!response.ok) return [];
+        const { data } = await response.json() as WakaTimeShareResponse;
+        return data;
       }));
-    };
+      const breakdowns = await getWakaTimeBreakdowns(fetchFn, activity?.days ?? [], lists);
 
-    const result = {
-      languages: await processItems(langRes),
-      editors: await processItems(editRes),
-      os: await processItems(osRes),
-      totalHours,
-      timeRange
-    };
-
-    wakaShareCache = { data: result, timestamp: now };
-    return result;
-  } catch (e) {
-    console.error('Failed to fetch WakaTime share data', e);
-    return null;
-  }
+      return { breakdowns };
+    } catch {
+      return emptyWakaTime;
+    }
+  });
 }

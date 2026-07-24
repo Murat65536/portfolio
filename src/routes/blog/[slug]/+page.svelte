@@ -1,8 +1,14 @@
 <script lang="ts">
+  import type { Component } from 'svelte';
+  import type { BlogPost } from '$lib/types';
   import type { PageData } from './$types';
 
+  const posts = import.meta.glob<{ default: Component; metadata: Omit<BlogPost, 'slug'> }>(
+    '/src/lib/posts/*.md',
+    { eager: true }
+  );
   let { data }: { data: PageData } = $props();
-  const Content = $derived(data.content);
+  const Content = $derived(posts[`/src/lib/posts/${data.slug}.md`].default);
 </script>
 
 <svelte:head>

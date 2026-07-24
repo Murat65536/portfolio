@@ -1,148 +1,213 @@
 <script lang="ts">
-  import type { GitHubStats, ContributionDay } from '$lib/types';
-  import { getDayColor } from '$lib/utils';
+  import { activityBreakdown, cumulativeActivity, dailyActivity, summarizeActivityRange } from '$lib/activity';
+  import type { GitHubStats, WakaTimeCategory, WakaTimeData } from '$lib/types';
+  import { onMount } from 'svelte';
+  import {
+    CategoryScale, Chart as ChartJS, Filler, Legend, LinearScale, LineElement, PointElement, Tooltip,
+    type ChartData, type ChartDataset, type ChartOptions, type Plugin
+  } from 'chart.js';
+  import type {} from 'chartjs-plugin-zoom';
+  import { Line } from 'svelte-chartjs';
 
-  let { 
-    githubStats, 
-    contributionYears, 
-    selectedYear = $bindable(), 
-    loadingGithub, 
-    onYearChange 
-  }: { 
-    githubStats: GitHubStats | null, 
-    contributionYears: number[], 
-    selectedYear: string, 
-    loadingGithub: boolean, 
-    onYearChange: (year: string) => Promise<void> 
-  } = $props();
+  Tooltip.positioners.fixed = function() {
+    return { x: this.chart.chartArea.left, y: this.chart.chartArea.top, xAlign: 'left', yAlign: 'top' };
+  };
+  ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Legend, Tooltip);
 
-  let githubTab = $state<'contributions' | 'hours' | 'blended'>('blended');
+  let { stats, breakdowns }: { stats: GitHubStats | null; breakdowns: WakaTimeData['breakdowns'] } = $props();
+  let chart = $state<ChartJS<'line'> | null>(null);
+  let zoomPlugin = $state<Plugin<'line'> | null>(null);
+  let codingView = $state<'total' | WakaTimeCategory>('total');
+  let valueMode = $state<'cumulative' | 'daily'>('cumulative');
+  let visibleRange = $state<[number, number]>([0, Number.MAX_SAFE_INTEGER]);
+  let drag = $state<
+    { mode: 'select'; start: number; current: number } | { mode: 'pan'; x: number } | null
+  >(null);
 
-  let hoveredDay = $state<ContributionDay | null>(null);
+  onMount(() => {
+    void import('chartjs-plugin-zoom').then(({ default: plugin }) => zoomPlugin = plugin);
+  });
 
-  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const cumulative = $derived(stats ? cumulativeActivity(stats) : []);
+  const activity = $derived(stats ? (valueMode === 'cumulative' ? cumulative : dailyActivity(stats)) : []);
+  const breakdown = $derived(codingView === 'total' || !breakdowns
+    ? []
+    : activityBreakdown(activity, breakdowns[codingView], valueMode === 'cumulative'));
+  const rangeStats = $derived(summarizeActivityRange(cumulative, ...visibleRange));
+  const dateFormat = new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' });
+  const axisDateFormat = new Intl.DateTimeFormat('en', { month: 'numeric', day: 'numeric', year: '2-digit' });
+  const rangeLabel = $derived(rangeStats.from
+    ? `${dateFormat.format(new Date(`${rangeStats.from}T00:00:00`))} – ${dateFormat.format(new Date(`${rangeStats.to}T00:00:00`))}`
+    : 'No activity');
 
-  const formattedWeeks = $derived(githubStats?.weeks.map((week) => {
-    const firstDayOfMonth = week.contributionDays.find(d => d.date.endsWith('-01'));
-    const monthIndex = firstDayOfMonth 
-      ? new Date(firstDayOfMonth.date).getMonth() 
-      : new Date(week.contributionDays[0].date).getMonth();
-    const showLabel = !!firstDayOfMonth;
-    
-    return {
-      ...week,
-      monthIndex,
-      showLabel
-    };
-  }) || []);
-
-  function setHoveredDay(day: ContributionDay | null) {
-    hoveredDay = day;
+  function syncRange(source: ChartJS) {
+    visibleRange = [Math.ceil(Number(source.scales.x.min)), Math.floor(Number(source.scales.x.max))];
   }
 
-  function setTab(tab: string) {
-    githubTab = tab as 'contributions' | 'hours' | 'blended';
+  function pointerX(event: PointerEvent) {
+    if (!chart) return 0;
+    const x = event.clientX - chart.canvas.getBoundingClientRect().left;
+    return Math.max(chart.chartArea.left, Math.min(chart.chartArea.right, x));
   }
+
+  function beginDrag(event: PointerEvent) {
+    if (!chart || event.pointerType !== 'mouse' || ![0, 2].includes(event.button)) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    (event.currentTarget as HTMLCanvasElement).setPointerCapture(event.pointerId);
+    const x = pointerX(event);
+    drag = event.button === 0
+      ? { mode: 'select', start: x, current: x }
+      : { mode: 'pan', x: event.clientX };
+  }
+
+  function moveDrag(event: PointerEvent) {
+    if (!drag || !chart) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (drag.mode === 'select') drag = { ...drag, current: pointerX(event) };
+    else {
+      chart.pan({ x: event.clientX - drag.x });
+      drag = { mode: 'pan', x: event.clientX };
+    }
+  }
+
+  function finishDrag(event: PointerEvent) {
+    if (!drag || !chart) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const completed = drag;
+    drag = null;
+    if (completed.mode === 'pan') return syncRange(chart);
+    const { start, current } = completed;
+    if (Math.abs(start - current) < 5) return;
+    chart.zoomRect(
+      { x: Math.min(start, current), y: chart.chartArea.top },
+      { x: Math.max(start, current), y: chart.chartArea.bottom }
+    );
+    syncRange(chart);
+  }
+
+  const codingDatasets: ChartDataset<'line'>[] = $derived(codingView === 'total'
+    ? [{
+        label: 'Coding hours', data: activity.map(({ hours }) => hours), yAxisID: 'hours',
+        borderColor: '#ef4444', backgroundColor: '#ef444422', fill: true, tension: 0.25
+      }]
+    : breakdown.map(({ name, color, data }) => ({
+        label: name, data, yAxisID: 'hours', stack: 'coding',
+        borderColor: color, backgroundColor: `${color}66`, fill: true, tension: 0.25
+      })));
+  const chartData: ChartData<'line'> = $derived({
+    labels: activity.map(({ date }) => axisDateFormat.format(new Date(`${date}T00:00:00`))),
+    datasets: [
+      ...codingDatasets,
+      {
+        label: 'Contributions', data: activity.map(({ contributions }) => contributions), yAxisID: 'contributions',
+        borderColor: '#3b82f6', backgroundColor: '#3b82f622', fill: true, tension: 0.25
+      }
+    ]
+  });
+  const chartOptions: ChartOptions<'line'> = {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: false,
+    interaction: { mode: 'index', intersect: false },
+    elements: { point: { radius: 0, hitRadius: 12, hoverRadius: 4 } },
+    plugins: {
+      legend: { labels: { color: '#9ca3af', usePointStyle: true } },
+      tooltip: { displayColors: true, position: 'fixed', caretSize: 0 },
+      zoom: {
+        limits: { x: { min: 'original', max: 'original', minRange: 14 } },
+        pan: {
+          enabled: true,
+          mode: 'x',
+          onPanStart: ({ event }) => event.pointerType !== 'mouse',
+          onPanComplete: ({ chart }) => syncRange(chart)
+        },
+        zoom: {
+          mode: 'x',
+          wheel: { enabled: true },
+          pinch: { enabled: true },
+          onZoomComplete: ({ chart }) => syncRange(chart)
+        }
+      }
+    },
+    scales: {
+      x: {
+        grid: { display: false },
+        ticks: { color: '#6b7280', autoSkip: true, maxRotation: 0, maxTicksLimit: 4 }
+      },
+      hours: { position: 'left', stacked: true, beginAtZero: true, grid: { color: '#ffffff0d' }, ticks: { color: '#ef4444' } },
+      contributions: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, ticks: { color: '#3b82f6' } }
+    }
+  };
 </script>
 
-<div class="p-8 rounded-xl border border-white/5 bg-surface/50 hover:border-white/10 transition-all flex flex-col h-full">
-  <h3 class="text-lg font-semibold mb-6 flex items-center justify-center text-text/90">
-    GitHub Activity
-  </h3>
+<section class="flex min-h-[32rem] flex-col rounded-xl border border-white/5 bg-surface/50 p-4 sm:p-8">
+  <h3 class="mb-6 text-lg font-semibold text-text/90">GitHub activity</h3>
 
-  <div class="mb-4 flex flex-col items-center gap-3 text-center">
-    <div class="flex items-center gap-2 flex-wrap justify-center">
-      {#if githubStats}
-        <span class="text-text/90 font-medium pointer-events-none">
-          {githubStats.totalContributions} contributions in
-        </span>
-      {/if}
-      <select
-        class="bg-surface/50 border border-white/10 text-sm rounded-md px-2 py-1 outline-none focus:border-primary transition-colors cursor-pointer text-text/90"
-        aria-label="Select contribution year"
-        bind:value={selectedYear}
-        onchange={(e) => onYearChange(e.currentTarget.value)}
-        disabled={loadingGithub}
-      >
-        <option value="last">the last year</option>
-        {#each contributionYears as year}
-          <option value={year.toString()}>{year}</option>
-        {/each}
-      </select>
+  {#if stats && activity.length}
+    <div class="mb-6 grid gap-4 text-center sm:grid-cols-2">
+      <p class="rounded-lg border border-white/5 bg-surface/30 p-3">
+        <span class="block text-xs uppercase text-muted">Contributions in range</span>
+        <strong class="text-xl text-blue-400">{rangeStats.contributions.toLocaleString()}</strong>
+      </p>
+      <p class="rounded-lg border border-white/5 bg-surface/30 p-3">
+        <span class="block text-xs uppercase text-muted">Coding hours in range</span>
+        <strong class="text-xl text-red-400">{rangeStats.hours.toLocaleString()}</strong>
+      </p>
     </div>
-    
-    {#if githubStats}
-      <div class="flex bg-surface/50 rounded-lg p-1 border border-white/5 pointer-events-auto" role="tablist" aria-label="GitHub activity view">
-        {#each ['contributions', 'hours', 'blended'] as tab}
-          <button
-            class="px-2 py-0.5 text-[10px] font-medium rounded-md transition-colors {githubTab === tab ? 'bg-white/10 text-text' : 'text-muted hover:text-text/80'}"
-            role="tab"
-            aria-selected={githubTab === tab}
-            onclick={() => setTab(tab)}
-          >
-            {tab.charAt(0).toUpperCase() + tab.slice(1)}
-          </button>
-        {/each}
-      </div>
-    {/if}
-  </div>
-
-  <div class="grow flex flex-col justify-center">
-    {#if loadingGithub}
-      <div class="flex justify-center items-center h-32">
-        <div class="animate-pulse flex gap-2">
-          <div class="w-2 h-2 rounded-full bg-primary/50"></div>
-          <div class="w-2 h-2 rounded-full bg-primary/70 delay-100"></div>
-          <div class="w-2 h-2 rounded-full bg-primary delay-200"></div>
-        </div>
-      </div>
-    {:else if githubStats}
-      <div class="h-10 flex items-center justify-center text-sm mb-2 text-text/80">
-        {#if hoveredDay}
-          <span class="animate-in fade-in duration-200 flex items-center gap-1.5">
-            <span class="font-bold text-text">{hoveredDay.contributionCount}</span> contributions 
-            {#if hoveredDay.codingText}
-              & <span class="font-bold text-text">{hoveredDay.codingText}</span> coded
-            {/if}
-            on <span class="text-muted">{hoveredDay.date}</span>
-          </span>
-        {:else}
-          <span class="text-muted/50 italic">Hover over the chart for details</span>
+    <div class="mb-2 flex flex-wrap items-center text-xs text-muted" aria-label="Visible graph range">
+      <strong class="mr-auto text-text/80">{rangeLabel}</strong>
+      <label class="mr-3">
+        Values
+        <select class="ml-1 rounded border border-white/10 bg-surface px-2 py-1 text-text" bind:value={valueMode}>
+          <option value="cumulative">Cumulative</option>
+          <option value="daily">Per day</option>
+        </select>
+      </label>
+      {#if breakdowns}
+        <label class="mr-3">
+          Coding hours
+          <select class="ml-1 rounded border border-white/10 bg-surface px-2 py-1 text-text" bind:value={codingView}>
+            <option value="total">Total</option>
+            <option value="languages">by language</option>
+            <option value="editors">by IDE</option>
+            <option value="os">by OS</option>
+          </select>
+        </label>
+      {/if}
+      <span class="hidden lg:inline">Left-drag a range · Right-drag to pan · Scroll or pinch to zoom</span>
+    </div>
+    <div class="relative min-h-72 grow">
+      {#if zoomPlugin}
+        <Line
+          bind:chart
+          data={chartData}
+          options={chartOptions}
+          plugins={[zoomPlugin]}
+          class="cursor-crosshair"
+          role="img"
+          aria-label="Interactive coding hours and GitHub contributions"
+          onpointerdown={beginDrag}
+          onpointermove={moveDrag}
+          onpointerup={finishDrag}
+          onpointercancel={() => drag = null}
+          oncontextmenu={(event) => event.preventDefault()}
+          onauxclick={(event) => event.preventDefault()}
+        />
+        {#if drag?.mode === 'select'}
+          <div
+            class="pointer-events-none absolute border border-blue-500 bg-blue-500/20"
+            style:left={`${Math.min(drag.start, drag.current)}px`}
+            style:width={`${Math.abs(drag.current - drag.start)}px`}
+            style:top={`${chart?.chartArea.top ?? 0}px`}
+            style:height={`${chart ? chart.chartArea.bottom - chart.chartArea.top : 0}px`}
+          ></div>
         {/if}
-      </div>
-
-      <div class="flex overflow-x-auto pb-10 pt-4 relative z-10 custom-scrollbar">
-        {#each formattedWeeks as week}
-          <div class="flex flex-col items-center">
-            <div class="h-35 flex flex-col">
-              {#each week.contributionDays as day}
-                {@const isEmpty = githubTab === 'hours' ? !day.codingSeconds : githubTab === 'contributions' ? day.contributionCount === 0 : (!day.codingSeconds && day.contributionCount === 0)}
-                <button 
-                  class="w-5 h-5 rounded-sm shrink-0 cursor-pointer border transition-all border-surface/50 {isEmpty ? 'bg-white/5' : ''}"
-                  style={getDayColor(day, githubTab)}
-                  onmouseenter={() => setHoveredDay(day)}
-                  onmouseleave={() => setHoveredDay(null)}
-                  onfocus={() => setHoveredDay(day)}
-                  onblur={() => setHoveredDay(null)}
-                  aria-label="{day.contributionCount} contributions on {day.date}"
-                ></button>
-              {/each}
-            </div>
-
-            <div class="h-8 flex items-start justify-center mt-2">
-              {#if week.showLabel}
-                <span class="text-[9px] font-bold text-text/80 uppercase tracking-tighter [writing-mode:vertical-lr]">
-                  {monthNames[week.monthIndex]}
-                </span>
-              {/if}
-            </div>
-          </div>
-        {/each}
-      </div>
-    {:else}
-      <div class="text-center text-muted text-sm py-8">
-        Failed to load GitHub stats.
-      </div>
-    {/if}
-  </div>
-</div>
+      {/if}
+    </div>
+  {:else}
+    <p class="m-auto text-sm text-muted">GitHub activity is unavailable right now.</p>
+  {/if}
+</section>
