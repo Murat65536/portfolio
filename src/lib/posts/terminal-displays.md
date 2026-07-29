@@ -76,8 +76,8 @@ In addition to doubling the vertical resolution, it also has the effect of makin
 Some older terminals don't support truecolor, so using palette characters is necessary.
 
 Just like truecolor, color changes can be applied to both the foreground and background:
-- `\x1b[38;5;{r};{g};{b}m`: Change the foreground color
-- `\x1b[48;5;{r};{g};{b}m`: Change the background color
+- `\x1b[38;5;{color}m`: Change the foreground color
+- `\x1b[48;5;{color}m`: Change the background color
 
 Palette characters only support 256 different colors, and are therefore more limited.
 
